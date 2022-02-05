@@ -29,6 +29,7 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 import static org.bson.codecs.configuration.CodecRegistries.fromProviders;
 import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
@@ -82,13 +83,17 @@ public class CommentDao extends AbstractMFlixDao {
         // comment.
         // TODO> Ticket - Handling Errors: Implement a try catch block to
         // handle a potential write exception when given a wrong commentId.
-        //add comment to the collection
+        if(!Optional.ofNullable(comment.getId()).isPresent()) {
+            throw new IncorrectDaoOperation("Comment id cannot be null");
+        }
+
         try {
             commentCollection.insertOne(comment);
         } catch (MongoWriteException e) {
-            log.error(MessageFormat.format("Failed to insert comment: {0}", comment), e);
-            throw new IncorrectDaoOperation(e.getMessage());
+            log.error("An error ocurred while trying to insert a Comment.");
+            return null;
         }
+
         return comment;
     }
 
@@ -112,16 +117,22 @@ public class CommentDao extends AbstractMFlixDao {
         // TODO> Ticket - Handling Errors: Implement a try catch block to
         // handle a potential write exception when given a wrong commentId.
 
-        try {
-            //filter commentId or email
-            Bson filter = Filters.and(Filters.eq("_id", new ObjectId(commentId)), Filters.eq("email", email));
+        UpdateResult ur = null;
 
-            Bson update = new Document("$set", new Document("text", text));
-            UpdateResult result = commentCollection.updateOne(filter, update, new UpdateOptions().upsert(false));
-            return result.getModifiedCount() > 0;
+        try {
+            ur = commentCollection.updateOne(
+                    Filters.and(
+                            Filters.eq("_id", new ObjectId(commentId)),
+                            Filters.eq("email", email)),
+                    Updates.combine(
+                            Updates.set("text", text),
+                            Updates.set("date", new Date())));
         } catch (MongoWriteException e) {
+            log.error("An error ocurred while trying to update a Comment.");
             return false;
         }
+
+        return ur.getMatchedCount() > 0 && ur.getModifiedCount() > 0;
     }
 
     /**
